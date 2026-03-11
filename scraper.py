@@ -1,0 +1,51 @@
+import requests
+from bs4 import BeautifulSoup
+import datetime
+
+def get_prices():
+    # Targeted Preston fuel data (March 2026)
+    url = "https://resolvo.uk/petrol-prices/preston"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    try:
+        r = requests.get(url, headers=headers)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        stations = []
+        
+        # Pulling the latest 2026 data formats
+        for row in soup.select('.fuel-station-card')[:10]: # Top 10 cheapest
+            name = row.select_one('.station-name').text.strip()
+            price = row.select_one('.diesel-price').text.strip()
+            stations.append(f"<tr><td>{name}</td><td>{price}</td></tr>")
+        
+        return "".join(stations)
+    except:
+        return "<tr><td colspan='2'>Data temporarily unavailable</td></tr>"
+
+# Generate the final web page
+html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Preston Diesel Tracker</title>
+    <style>
+        body {{ font-family: sans-serif; padding: 20px; background: #f0f2f5; }}
+        table {{ width: 100%; border-collapse: collapse; background: white; }}
+        th, td {{ padding: 12px; border: 1px solid #ddd; text-align: left; }}
+        th {{ background: #007bff; color: white; }}
+    </style>
+</head>
+<body>
+    <h1>⛽ Preston Diesel Prices</h1>
+    <p>Last Updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} GMT</p>
+    <table>
+        <tr><th>Station</th><th>Price (ppl)</th></tr>
+        {get_prices()}
+    </table>
+</body>
+</html>
+"""
+
+with open("index.html", "w") as f:
+    f.write(html_content)
+
