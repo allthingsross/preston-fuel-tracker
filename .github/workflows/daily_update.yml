@@ -1,34 +1,32 @@
- name: Update Fuel Prices
-
 on:
   schedule:
-    - cron: '27 22 * * *'  # This is Line 5: 7:00 AM daily
-  workflow_dispatch:     # This allows you to click a button to run it manually
+    - cron: '0 7 * * *'
+  workflow_dispatch:
 
 jobs:
-  build:
+  scrape_job:
     runs-on: ubuntu-latest
     permissions:
-      contents: write    # This is vital in 2026 to allow GitHub to save the file
+      contents: write
     steps:
-      - name: Checkout Repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install Dependencies
+      - name: Install Libraries
         run: pip install requests beautifulsoup4
 
-      - name: Run Scraper
+      - name: Run Preston Scraper
         run: python scraper.py
 
-      - name: Commit and Push Changes
+      - name: Save to GitHub
         run: |
-          git config --global user.name "FuelBot"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "PrestonFuelBot"
+          git config --global user.email "bot@example.com"
           git add index.html
-          git commit -m "Updated Preston prices for $(date)" || echo "No changes to commit"
+          git commit -m "Update prices for $(date)" || echo "No changes"
           git push
