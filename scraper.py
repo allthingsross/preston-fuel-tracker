@@ -1,97 +1,105 @@
+import os
 import requests
 import datetime
 
-def get_fuel_data():
-    # Official 2026 Statutory Fuel Price Endpoint
-    # As of March 2026, this is the reliable government-mandated feed
-    url = "https://www.developer.fuel-finder.service.gov.uk/api/v1/prices"
+def get_access_token():
+    # Grabs the secrets we stored in GitHub
+    client_id = os.getenv('FUEL_CLIENT_ID')
+    client_secret = os.getenv('FUEL_CLIENT_SECRET')
     
-    # We focus on the Preston PR1/PR2 area
+    auth_url = "https://identity.fuel-finder.service.gov.uk/connect/token"
+    payload = {
+        'grant_type': 'client_credentials',
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'scope': 'fuel_price_read'
+    }
+    
+    try:
+        response = requests.post(auth_url, data=payload, timeout=10)
+        response.raise_for_status()
+        return response.json().get('access_token')
+    except Exception as e:
+        print(f"Auth failed: {e}")
+        return None
+
+def get_prices(token):
+    if not token:
+        return "<tr><td colspan='2' class='text-danger'>Authentication Failed</td></tr>"
+    
+    # Statutory API - Preston PR1 Area (5 mile radius)
+    url = "https://www.developer.fuel-finder.service.gov.uk/api/v1/prices"
     params = {
         'postcode': 'PR1',
         'radius': '5'
     }
+    headers = {'Authorization': f'Bearer {token}'}
     
-    stations_html = ""
     try:
-        # Note: If this beta endpoint requires a key in your region, 
-        # replace headers with: {'Authorization': 'Bearer YOUR_TOKEN'}
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
         
-        # Sort by price (cheapest first)
-        sorted_sites = sorted(data['stations'], 
-                              key=lambda x: next((f['price'] for f in x['prices'] if f['fuel_type'] == 'Diesel'), 999))
-
-        for site in sorted_sites[:12]: # Show top 12 cheapest in Preston
-            name = site.get('brand', 'Independent') + " " + site.get('name', '')
-            postcode = site.get('postcode', 'PR')
-            
-            # Find the diesel price in the list of fuels
-            diesel_price = "N/A"
-            for fuel in site.get('prices', []):
-                if fuel['fuel_type'] == 'Diesel':
-                    diesel_price = f"{fuel['price']}p"
-                    break
-            
-            stations_html += f"""
-            <tr>
-                <td><span class='station-name'>{name}</span><br><small class='text-muted'>{postcode}</small></td>
-                <td class='text-end'><span class='price-badge'>{diesel_price}</span></td>
-            </tr>
-            """
+        rows = ""
+        # Find stations with Diesel and sort by price
+        stations_with_diesel = []
+        for s in data.get('stations', []):
+            diesel_info = next((p for p in s.get('prices', []) if p['fuel_type'].lower() == 'diesel'), None)
+            if diesel_info:
+                stations_with_diesel.append({
+                    'name': f"{s.get('brand', 'Ind')} {s.get('name', '')}",
+                    'postcode': s.get('postcode', 'PR1'),
+                    'price': diesel_info['price']
+                })
+        
+        sorted_stations = sorted(stations_with_diesel, key=lambda x: x['price'])
+        
+        for s in sorted_stations[:10]:
+            rows += f"<tr><td><span class='station-name'>{s['name']}</span><br><small class='text-muted'>{s['postcode']}</small></td>"
+            rows += f"<td class='text-end'><span class='price-badge'>{s['price']}p</span></td></tr>"
+        
+        return rows if rows else "<tr><td colspan='2'>No diesel prices found in area.</td></tr>"
     except Exception as e:
-        # Fallback for Preston (Current Averages as of March 11, 2026)
-        stations_html = f"<tr><td colspan='2' class='text-danger'>API Offline: {str(e)}</td></tr>"
-    
-    return stations_html
+        return f"<tr><td colspan='2' class='text-danger'>Data Error: {e}</td></tr>"
 
-# Generate the HTML file
 def generate_webpage(content):
     now = datetime.datetime.now().strftime("%d %b %Y, %H:%M")
-    
     html_template = f"""
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Preston Diesel Tracker</title>
+        <title>Preston Fuel</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <style>
-            body {{ background-color: #f4f7f6; padding-top: 30px; font-family: sans-serif; }}
-            .card {{ border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: none; }}
-            .price-badge {{ color: #28a745; font-weight: bold; font-size: 1.1rem; }}
+            body {{ background-color: #f8f9fa; padding: 20px; font-family: sans-serif; }}
+            .card {{ border: none; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }}
+            .price-badge {{ color: #198754; font-weight: bold; font-size: 1.1rem; }}
             .station-name {{ font-weight: 600; color: #333; }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="row justify-content-center">
-                <div class="col-md-6">
-                    <div class="text-center mb-4">
-                        <h1 class="fw-bold">⛽ Preston Diesel</h1>
-                        <p class="text-muted">Live 2026 Statutory Data | Updated {now}</p>
-                    </div>
-                    <div class="card p-3">
-                        <table class="table align-middle">
-                            <thead><tr><th>Station</th><th class="text-end">Diesel</th></tr></thead>
-                            <tbody>
-                                {content}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <div class="container mt-4" style="max-width: 500px;">
+            <h2 class="text-center fw-bold">⛽ Preston Diesel</h2>
+            <p class="text-center text-muted small">Statutory Live Data | Updated: {now}</p>
+            <div class="card p-3">
+                <table class="table align-middle">
+                    <thead><tr><th>Station</th><th class="text-end">Price</th></tr></thead>
+                    <tbody>{content}</tbody>
+                </table>
+            </div>
+            <div class="text-center mt-3 text-muted small">
+                Data provided via GOV.UK Fuel Finder Scheme.
             </div>
         </div>
     </body>
-    </html>
-    """
+    </html>"""
     
     with open("index.html", "w") as f:
         f.write(html_template)
 
 if __name__ == "__main__":
-    prices = get_fuel_data()
-    generate_webpage(prices)
+    access_token = get_access_token()
+    price_content = get_prices(access_token)
+    generate_webpage(price_content)
