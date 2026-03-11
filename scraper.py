@@ -54,11 +54,10 @@ def get_preston_prices():
         html_rows += f"<tr><td><span class='station-name'>{s['brand']} {s['name']}</span><br><small class='text-muted'>{s['postcode']}</small></td><td class='text-end'><span class='price-badge'>{s['price']}p</span></td></tr>"
     
     return html_rows
-
 def generate_webpage(content):
     now = datetime.datetime.now().strftime("%d %b %Y, %H:%M")
     
-    # Note: Double curly braces {{ }} are used here to escape the CSS for Python's f-string
+    # Note: Double curly braces {{ }} are used to escape CSS/JS for Python's f-string
     html_template = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -72,16 +71,22 @@ def generate_webpage(content):
             .card {{ border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
             .price-badge {{ color: #198754; font-weight: bold; font-size: 1.2rem; }}
             .station-name {{ font-weight: 600; color: #212529; }}
+            .sticky-search {{ position: sticky; top: 0; background: #f0f2f5; z-index: 100; padding-bottom: 15px; }}
         </style>
     </head>
     <body>
         <div class="container" style="max-width: 500px;">
-            <div class="text-center mb-4">
-                <h2 class="fw-bold">⛽ Preston Diesel</h2>
-                <p class="text-muted small">Updated {now}</p>
+            <div class="sticky-search">
+                <div class="text-center mb-3">
+                    <h2 class="fw-bold m-0">⛽ Preston Diesel</h2>
+                    <p class="text-muted small m-0">Updated {now}</p>
+                </div>
+                <input type="text" id="fuelSearch" class="form-control form-control-lg shadow-sm" 
+                       placeholder="Search station or area (e.g. Asda, PR2)...">
             </div>
+
             <div class="card p-3 bg-white">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover align-middle mb-0" id="fuelTable">
                     <thead><tr><th>Station</th><th class="text-end">Price</th></tr></thead>
                     <tbody>
                         {content}
@@ -89,6 +94,19 @@ def generate_webpage(content):
                 </table>
             </div>
         </div>
+
+        <script>
+            // Real-time Search Logic
+            document.getElementById('fuelSearch').addEventListener('keyup', function() {{
+                const filter = this.value.toLowerCase();
+                const rows = document.querySelectorAll('#fuelTable tbody tr');
+                
+                rows.forEach(row => {{
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(filter) ? '' : 'none';
+                }});
+            }});
+        </script>
     </body>
     </html>
     """
