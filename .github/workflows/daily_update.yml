@@ -1,6 +1,6 @@
 on:
   schedule:
-    - cron: '57 22 * * *'
+    - cron: '57 23 * * *'
   workflow_dispatch:
 
 # These are the magic lines that fix the "id-token" and 404 issues
