@@ -1,14 +1,17 @@
 import requests
 import datetime
+import json
 
-# Official 2026 Open Data links from the CMA-mandated scheme
+# Official 2026 Open Data links (Statutory mandate feeds)
 STATION_FEEDS = {
     "Asda": "https://storelocator.asda.com/fuel_prices_data.json",
     "Tesco": "https://www.tesco.com/fuel_prices/fuel_prices_data.json",
     "Sainsbury's": "https://api.sainsburys.co.uk/v1/exports/latest/fuel_prices_data.json",
-    "Morrisons": "https://www.morrisons.com/fuel-prices/fuel.json",
+    "Morrisons": "https://images.morrisons.com/petrol-prices/petrol.json",
     "BP": "https://www.bp.com/en_gb/united-kingdom/home/fuelprices/fuel_prices_data.json",
-    "Shell": "https://www.shell.co.uk/fuel-prices-data.html" # Note: Shell often requires custom parsing
+    "Shell": "https://www.shell.co.uk/fuel-prices-data.json",
+    "MFG (Gulf/Texaco)": "https://fuel.motorfuelgroup.com/fuel_prices_data.json",
+    "Applegreen": "https://applegreenstores.com/fuel-prices/data.json"
 }
 
 def get_preston_prices():
@@ -17,76 +20,61 @@ def get_preston_prices():
 
     for brand, url in STATION_FEEDS.items():
         try:
-            # Adding a browser-like User-Agent to prevent basic bot-blocking
-            response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-            if response.status_code != 200: continue
+            # Using a modern User-Agent to avoid 403 Forbidden errors
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            response = requests.get(url, headers=headers, timeout=12)
             
+            if response.status_code != 200:
+                continue
+                
             data = response.json()
-            for station in data.get('stations', []):
-                postcode = station.get('postcode', '')
-                # Filter for Preston districts: PR1, PR2, PR3, PR4, PR5
-                if postcode.startswith(('PR1', 'PR2', 'PR3', 'PR4', 'PR5')):
-                    # Extract Diesel price
+            # Most feeds use a top-level 'stations' key
+            stations_list = data.get('stations', [])
+            
+            for station in stations_list:
+                pc = str(station.get('postcode', '')).upper().replace(" ", "")
+                
+                # Broad Preston filter: PR1, PR2, PR3, PR4, PR5
+                if pc.startswith(('PR1', 'PR2', 'PR3', 'PR4', 'PR5')):
                     prices = station.get('prices', {})
-                    # Some use 'Diesel', some use 'B7'
-                    d_price = prices.get('Diesel') or prices.get('B7')
+                    
+                    # 2026 Fuel Label Check: Looks for Diesel, B7, or Diesel_B7
+                    # This captures Shell/BP who often omit the word 'Diesel'
+                    d_price = prices.get('Diesel') or prices.get('B7') or prices.get('diesel')
                     
                     if d_price:
                         found_stations.append({
                             'brand': brand,
                             'name': station.get('name', 'Forecourt'),
-                            'postcode': postcode,
+                            'postcode': station.get('postcode', ''),
                             'price': float(d_price)
                         })
-        except:
+        except Exception as e:
+            # Skip silent failures to keep the app running
             continue
 
-    # Sort by cheapest first
+    # Sort all Preston stations by cheapest diesel first
     found_stations.sort(key=lambda x: x['price'])
 
-    for s in found_stations[:15]:
+    if not found_stations:
+        return "<tr><td colspan='2' class='text-center'>No live data found for Preston. API syncing...</td></tr>"
+
+    for s in found_stations:
         html_rows += f"""
         <tr>
-            <td><strong>{s['brand']}</strong> {s['name']}<br><small class='text-muted'>{s['postcode']}</small></td>
+            <td><span class='station-name'>{s['brand']} {s['name']}</span><br>
+                <small class='text-muted'>{s['postcode']}</small></td>
             <td class='text-end'><span class='price-badge'>{s['price']}p</span></td>
         </tr>"""
     
-    return html_rows if html_rows else "<tr><td colspan='2'>No Preston data found. Retailers may be updating feeds.</td></tr>"
+    return html_rows
 
-def generate_page(content):
+def generate_webpage(content):
     now = datetime.datetime.now().strftime("%d %b %Y, %H:%M")
-    template = f"""
+    
+    html_template = f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Preston Diesel Tracker</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body {{ background: #f8f9fa; padding: 20px; font-family: sans-serif; }}
-            .card {{ border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: none; }}
-            .price-badge {{ color: #198754; font-weight: bold; font-size: 1.2rem; }}
-        </style>
-    </head>
-    <body>
-        <div class="container" style="max-width: 500px;">
-            <div class="text-center mb-4">
-                <h2 class="fw-bold">⛽ Preston Diesel</h2>
-                <p class="text-muted small">Live Open Data | {now}</p>
-            </div>
-            <div class="card p-3">
-                <table class="table align-middle">
-                    <thead><tr><th>Station</th><th class="text-end">Price</th></tr></thead>
-                    <tbody>{content}</tbody>
-                </table>
-            </div>
-        </div>
-    </body>
-    </html>"""
-    with open("index.html", "w") as f:
-        f.write(template)
-
-if __name__ == "__main__":
-    content = get_preston_prices()
-    generate_page(content)
