@@ -25,6 +25,9 @@ jobs:
         run: pip install requests beautifulsoup4
 
       - name: Run Preston Scraper
+        env:
+          FUEL_CLIENT_ID: ${{ secrets.FUEL_CLIENT_ID }}
+          FUEL_CLIENT_SECRET: ${{ secrets.FUEL_CLIENT_SECRET }}
         run: python scraper.py
 
       # This creates the package GitHub Pages needs
